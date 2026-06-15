@@ -49,7 +49,6 @@ async function updateCell(sheetName, row, col, value) {
   });
 }
 
-// Стан користувачів
 const userState = {};
 
 function getState(chatId) {
@@ -131,9 +130,13 @@ bot.on('message', async (msg) => {
   if (state === 'wait_product_days') {
     const days = parseInt(text);
     if (isNaN(days)) { bot.sendMessage(chatId, '❌ Введи число'); return; }
-    await appendRow('Товари', [data.name, data.category, data.price, data.stock, data.sizes, days, '']);
-    clearState(chatId);
-    bot.sendMessage(chatId, '✅ Товар додано!\n\n*' + data.name + '*\nКатегорія: ' + data.category + '\nЦіна: ' + data.price + '₴\nРозміри: ' + data.sizes + '\nНа складі: ' + data.stock + ' шт\nПошиття: ' + days + ' дн', { parse_mode: 'Markdown' });
+    try {
+      await appendRow('Sheet1', [data.name, data.category, data.price, data.stock, data.sizes, days, '']);
+      clearState(chatId);
+      bot.sendMessage(chatId, '✅ Товар додано!\n\n*' + data.name + '*\nКатегорія: ' + data.category + '\nЦіна: ' + data.price + '₴\nРозміри: ' + data.sizes + '\nНа складі: ' + data.stock + ' шт\nПошиття: ' + days + ' дн', { parse_mode: 'Markdown' });
+    } catch(e) {
+      bot.sendMessage(chatId, '❌ Помилка збереження: ' + e.message);
+    }
     mainMenu(chatId);
     return;
   }
@@ -142,9 +145,13 @@ bot.on('message', async (msg) => {
     const now = new Date();
     const date = now.toLocaleDateString('uk-UA');
     const time = now.toLocaleTimeString('uk-UA', { hour: '2-digit', minute: '2-digit' });
-    await appendRow('Звіти швей', [date, time, data.name || msg.from.first_name, text]);
-    clearState(chatId);
-    bot.sendMessage(chatId, '✅ Звіт прийнято!\n\n📅 ' + date + ' ' + time + '\n👤 ' + (data.name || msg.from.first_name) + '\n📝 ' + text);
+    try {
+      await appendRow('Sheet2', [date, time, data.name || msg.from.first_name, text]);
+      clearState(chatId);
+      bot.sendMessage(chatId, '✅ Звіт прийнято!\n\n📅 ' + date + ' ' + time + '\n👤 ' + (data.name || msg.from.first_name) + '\n📝 ' + text);
+    } catch(e) {
+      bot.sendMessage(chatId, '❌ Помилка: ' + e.message);
+    }
     mainMenu(chatId);
     return;
   }
@@ -159,18 +166,22 @@ bot.on('message', async (msg) => {
   if (state === 'wait_stock_qty') {
     const qty = parseInt(text);
     if (isNaN(qty)) { bot.sendMessage(chatId, '❌ Введи число'); return; }
-    const rows = await getRows('Товари');
-    let found = false;
-    for (let i = 1; i < rows.length; i++) {
-      if (rows[i][0] && rows[i][0].toLowerCase().includes(data.productName.toLowerCase())) {
-        const newStock = (parseInt(rows[i][3]) || 0) + qty;
-        await updateCell('Товари', i + 1, 4, newStock);
-        bot.sendMessage(chatId, '✅ Оновлено!\n\n*' + rows[i][0] + '*\nБуло: ' + rows[i][3] + ' шт\nДодали: +' + qty + '\nСтало: ' + newStock + ' шт', { parse_mode: 'Markdown' });
-        found = true;
-        break;
+    try {
+      const rows = await getRows('Sheet1');
+      let found = false;
+      for (let i = 1; i < rows.length; i++) {
+        if (rows[i][0] && rows[i][0].toLowerCase().includes(data.productName.toLowerCase())) {
+          const newStock = (parseInt(rows[i][3]) || 0) + qty;
+          await updateCell('Sheet1', i + 1, 4, newStock);
+          bot.sendMessage(chatId, '✅ Оновлено!\n\n*' + rows[i][0] + '*\nБуло: ' + rows[i][3] + ' шт\nДодали: +' + qty + '\nСтало: ' + newStock + ' шт', { parse_mode: 'Markdown' });
+          found = true;
+          break;
+        }
       }
+      if (!found) bot.sendMessage(chatId, '❌ Товар не знайдено.');
+    } catch(e) {
+      bot.sendMessage(chatId, '❌ Помилка: ' + e.message);
     }
-    if (!found) bot.sendMessage(chatId, '❌ Товар не знайдено.');
     clearState(chatId);
     mainMenu(chatId);
     return;
@@ -201,13 +212,17 @@ bot.on('callback_query', async (cb) => {
     return;
   }
   if (data_str === 'view_products') {
-    const rows = await getRows('Товари');
-    if (rows.length <= 1) { bot.sendMessage(chatId, '📦 Товарів ще немає.'); return; }
-    let txt = '📦 *Товари на складі:*\n\n';
-    rows.slice(1).forEach(r => {
-      if (r[0]) txt += (parseInt(r[3]) > 0 ? '🟢' : '🔴') + ' *' + r[0] + '* — ' + (r[3] || 0) + ' шт | ' + (r[2] || 0) + '₴\n';
-    });
-    bot.sendMessage(chatId, txt, { parse_mode: 'Markdown' });
+    try {
+      const rows = await getRows('Sheet1');
+      if (rows.length <= 1) { bot.sendMessage(chatId, '📦 Товарів ще немає.'); return; }
+      let txt = '📦 *Товари на складі:*\n\n';
+      rows.slice(1).forEach(r => {
+        if (r[0]) txt += (parseInt(r[3]) > 0 ? '🟢' : '🔴') + ' *' + r[0] + '* — ' + (r[3] || 0) + ' шт | ' + (r[2] || 0) + '₴\n';
+      });
+      bot.sendMessage(chatId, txt, { parse_mode: 'Markdown' });
+    } catch(e) {
+      bot.sendMessage(chatId, '❌ Помилка: ' + e.message);
+    }
     return;
   }
   if (data_str.startsWith('cat_') && state === 'wait_product_category') {
